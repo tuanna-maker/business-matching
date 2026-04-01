@@ -1,0 +1,997 @@
+// IEC Hub v4.0 - Trust-based B2B Data Infrastructure
+// "Private Business Lounge" - Where Trust Meets Opportunity
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS - Business Logic States
+// ============================================================================
+
+enum OAType {
+  STARTUP
+  INVESTOR
+  SME
+  RESEARCHER
+}
+
+enum OARole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum OAVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum TrustLevel {
+  NEWCOMER     // 0-24: New to the platform
+  VERIFIED     // 25-49: Email & basic info verified
+  TRUSTED      // 50-74: Has interactions & vouches
+  ELITE        // 75-100: Top-tier reputation
+}
+
+enum DataTier {
+  PUBLIC       // Tier 1: Open access
+  PROTECTED    // Tier 2: Request required
+  CONFIDENTIAL // Tier 3: NDA + Approval required
+}
+
+enum DataAccessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  REVOKED
+}
+
+enum ProjectType {
+  PRODUCT
+  SERVICE
+  INITIATIVE
+  CASE_STUDY
+  SEEKING
+}
+
+enum ProjectStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum EventType {
+  KYB_WORKSHOP
+  INDUSTRY_MEETUP
+  PITCH_SESSION
+  KNOWLEDGE_SHARE
+  DEAL_FLOW_REVIEW
+}
+
+enum EventFormat {
+  ONLINE
+  OFFLINE
+  HYBRID
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  DECLINED
+  RESCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum MatchStatus {
+  NEW
+  VIEWED
+  SAVED
+  CONNECTED
+  DISMISSED
+}
+
+// ============================================================================
+// CORE: USER & AUTHENTICATION
+// ============================================================================
+
+model User {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email             String    @unique
+  email_verified    Boolean   @default(false)
+  email_verified_at DateTime?
+  password_hash     String
+  full_name         String
+  phone             String?
+  avatar_url        String?
+  
+  // Multi-OA: User can own/belong to multiple OAs
+  primary_oa_id     String?   @db.Uuid
+  
+  // Activity tracking
+  last_active_at    DateTime?
+  
+  // System fields
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+  
+  // Relations
+  oa_memberships    OAMembership[]
+  primary_oa        BusinessOA?       @relation("UserPrimaryOA", fields: [primary_oa_id], references: [id])
+  email_tokens      EmailVerification[]
+  refresh_tokens    RefreshToken[]
+  bookings_created  Booking[]         @relation("BookingCreator")
+  audit_logs        AuditLog[]        @relation("AuditActor")
+  notifications     Notification[]
+  
+  @@index([email])
+  @@index([primary_oa_id])
+  @@map("users")
+}
+
+model EmailVerification {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String    @db.Uuid
+  token       String    @unique
+  expires_at  DateTime
+  verified_at DateTime?
+  created_at  DateTime  @default(now())
+  
+  user        User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@index([token])
+  @@map("email_verifications")
+}
+
+model RefreshToken {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String    @db.Uuid
+  token       String    @unique
+  expires_at  DateTime
+  revoked_at  DateTime?
+  created_at  DateTime  @default(now())
+  
+  user        User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+model BlockedEmailDomain {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domain      String    @unique
+  reason      String?
+  created_at  DateTime  @default(now())
+  
+  @@map("blocked_email_domains")
+}
+
+// ============================================================================
+// BUSINESS OA (Organization Account) - Multi-tenant Support
+// ============================================================================
+
+model BusinessOA {
+  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  
+  // Identity
+  legal_name            String
+  brand_name            String?
+  slug                  String              @unique
+  tax_code              String?             @unique
+  oa_type               OAType
+  
+  // Profile - Visual
+  logo_url              String?
+  cover_url             String?
+  
+  // Profile - Content
+  tagline               String?             @db.VarChar(160)
+  description           String?             @db.Text
+  website               String?
+  founded_year          Int?
+  employee_count_min    Int?
+  employee_count_max    Int?
+  
+  // Location
+  headquarters_address  String?
+  headquarters_city     String?
+  headquarters_country  String?
+  operating_regions     String[]            @default([])
+  
+  // Industries & Focus Areas
+  industries            String[]            @default([])
+  technologies          String[]            @default([])
+  
+  // Verification
+  verification_status   OAVerificationStatus @default(PENDING)
+  verified_at           DateTime?
+  verified_by           String?             @db.Uuid
+  
+  // Trust & Reputation (Core Metrics)
+  trust_score           Int                 @default(0)  // 0-100
+  trust_level           TrustLevel          @default(NEWCOMER)
+  
+  // Engagement Metrics
+  profile_view_count    Int                 @default(0)
+  project_count         Int                 @default(0)
+  connection_count      Int                 @default(0)
+  
+  // System
+  created_at            DateTime            @default(now())
+  updated_at            DateTime            @updatedAt
+  
+  // Relations
+  members               OAMembership[]
+  primary_users         User[]              @relation("UserPrimaryOA")
+  projects              Project[]
+  data_vault            DataVault?
+  
+  // Type-specific profiles (polymorphic)
+  startup_profile       StartupProfile?
+  investor_profile      InvestorProfile?
+  sme_profile           SMEProfile?
+  researcher_profile    ResearcherProfile?
+  
+  // Events & Bookings
+  events_organized      Event[]             @relation("EventOrganizer")
+  event_registrations   EventRegistration[]
+  bookings_sent         Booking[]           @relation("BookingRequester")
+  bookings_received     Booking[]           @relation("BookingTarget")
+  
+  // Trust & Social
+  vouches_given         Vouch[]             @relation("VouchGiver")
+  vouches_received      Vouch[]             @relation("VouchReceiver")
+  badges                OABadge[]
+  spotlights            BusinessSpotlight[]
+  
+  // Matching
+  match_suggestions     MatchSuggestion[]   @relation("MatchSource")
+  match_targets         MatchSuggestion[]   @relation("MatchTarget")
+  interactions_made     Interaction[]       @relation("InteractionActor")
+  
+  @@index([oa_type])
+  @@index([trust_level])
+  @@index([verification_status])
+  @@index([slug])
+  @@map("business_oas")
+}
+
+model OAMembership {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String      @db.Uuid
+  oa_id       String      @db.Uuid
+  role        OARole      @default(MEMBER)
+  
+  joined_at   DateTime    @default(now())
+  invited_by  String?     @db.Uuid
+  
+  // Permissions (extensible)
+  can_edit    Boolean     @default(false)
+  can_invite  Boolean     @default(false)
+  can_delete  Boolean     @default(false)
+  
+  user        User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  oa          BusinessOA  @relation(fields: [oa_id], references: [id], onDelete: Cascade)
+  
+  @@unique([user_id, oa_id])
+  @@index([oa_id])
+  @@map("oa_memberships")
+}
+
+// ============================================================================
+// TYPE-SPECIFIC PROFILES (Extends BusinessOA)
+// ============================================================================
+
+model StartupProfile {
+  id                    String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  oa_id                 String      @unique @db.Uuid
+  
+  // Stage & Funding
+  stage                 String?     // Idea, MVP, Growth, Scale
+  funding_status        String?     // Bootstrapped, Pre-seed, Seed, Series A+
+  funding_raised_usd    Decimal?    @db.Decimal(15, 2)
+  funding_seeking_usd   Decimal?    @db.Decimal(15, 2)
+  
+  // Product
+  product_description   String?     @db.Text
+  target_customers      String[]    @default([])
+  value_proposition     String?     @db.Text
+  
+  // What they're looking for
+  seeking               String[]    @default([]) // Investment, Customer, Partner, Mentor
+  
+  // Traction Metrics
+  mrr_usd               Decimal?    @db.Decimal(15, 2)
+  customer_count        Int?
+  growth_rate_percent   Decimal?    @db.Decimal(5, 2)
+  
+  // Pitch Materials
+  pitch_deck_url        String?
+  demo_url              String?
+  
+  oa                    BusinessOA  @relation(fields: [oa_id], references: [id], onDelete: Cascade)
+  
+  @@map("startup_profiles")
+}
+
+model InvestorProfile {
+  id                    String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  oa_id                 String      @unique @db.Uuid
+  
+  // Investor Type
+  investor_type         String?     // VC, Angel, CVC, PE, Family Office
+  
+  // Fund Details
+  fund_size_usd         Decimal?    @db.Decimal(15, 2)
+  ticket_min_usd        Decimal?    @db.Decimal(15, 2)
+  ticket_max_usd        Decimal?    @db.Decimal(15, 2)
+  portfolio_count       Int?
+  
+  // Investment Thesis
+  investment_thesis     String?     @db.Text
+  target_stages         String[]    @default([])
+  target_industries     String[]    @default([])
+  target_regions        String[]    @default([])
+  
+  // Activity
+  actively_investing    Boolean     @default(true)
+  deals_per_year        Int?
+  
+  oa                    BusinessOA  @relation(fields: [oa_id], references: [id], onDelete: Cascade)
+  
+  @@map("investor_profiles")
+}
+
+model SMEProfile {
+  id                    String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  oa_id                 String      @unique @db.Uuid
+  
+  // Business Scale
+  revenue_range_usd     String?     // $1M-5M, $5M-20M, etc.
+  years_in_business     Int?
+  
+  // Services & Expertise
+  core_services         String[]    @default([])
+  certifications        String[]    @default([])
+  notable_clients       String[]    @default([])
+  
+  // Digital Transformation Needs
+  seeking               String[]    @default([]) // DigitalTransformation, NewMarket, Partner, Supplier
+  
+  // Budget & Timeline
+  annual_tech_budget_usd Decimal?   @db.Decimal(15, 2)
+  decision_timeline     String?     // Immediate, Quarter, Year
+  
+  oa                    BusinessOA  @relation(fields: [oa_id], references: [id], onDelete: Cascade)
+  
+  @@map("sme_profiles")
+}
+
+model ResearcherProfile {
+  id                    String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  oa_id                 String      @unique @db.Uuid
+  
+  // Organization Type
+  org_type              String?     // University, Institute, Consulting, Independent
+  
+  // Research Focus
+  research_areas        String[]    @default([])
+  data_interests        String[]    @default([])
+  research_purpose      String?     @db.Text
+  
+  // Credentials
+  accreditations        String[]    @default([])
+  ethical_clearance     Boolean     @default(false)
+  
+  // Publications
+  publication_count     Int?
+  h_index               Int?
+  
+  oa                    BusinessOA  @relation(fields: [oa_id], references: [id], onDelete: Cascade)
+  
+  @@map("researcher_profiles")
+}
+
+// ============================================================================
+// PROJECT FEED & SHOWCASE
+// ============================================================================
+
+model Project {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  oa_id             String          @db.Uuid
+  
+  // Basic Info
+  title             String
+  slug              String          @unique
+  description       String?         @db.Text
+  cover_image_url   String?
+  
+  // Classification
+  project_type      ProjectType
+  industries        String[]        @default([])
+  technologies      String[]        @default([])
+  
+  // Timeline
+  status            ProjectStatus   @default(DRAFT)
+  start_date        DateTime?
+  end_date          DateTime?
+  
+  // Visibility & Access
+  visibility        DataTier        @default(PUBLIC)
+  
+  // Engagement
+  view_count        Int             @default(0)
+  save_count        Int             @default(0)
+  inquiry_count     Int             @default(0)
+  
+  // Match Score (AI-calculated, cached)
+  avg_match_score   Int?            // Average match score with viewers
+  
+  // System
+  created_at        DateTime        @default(now())
+  updated_at        DateTime        @updatedAt
+  published_at      DateTime?
+  
+  // Relations
+  oa                BusinessOA      @relation(fields: [oa_id], references: [id], onDelete: Cascade)
+  milestones        ProjectMilestone[]
+  documents         ProjectDocument[]
+  
+  @@index([oa_id])
+  @@index([status])
+  @@index([project_type])
+  @@index([visibility])
+  @@map("projects")
+}
+
+model ProjectMilestone {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id      String      @db.Uuid
+  
+  title           String
+  description     String?     @db.Text
+  achieved_at     DateTime
+  
+  // Metrics (JSON for flexibility)
+  metrics         Json?       // { revenue: "100k", users: "1000" }
+  
+  created_at      DateTime    @default(now())
+  
+  project         Project     @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  
+  @@index([project_id])
+  @@map("project_milestones")
+}
+
+model ProjectDocument {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id      String      @db.Uuid
+  
+  title           String
+  document_type   String      // pitch_deck, financial, legal, technical
+  storage_path    String
+  file_size       Int?
+  mime_type       String?
+  visibility      DataTier    @default(PUBLIC)
+  
+  created_at      DateTime    @default(now())
+  
+  project         Project     @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  
+  @@index([project_id])
+  @@map("project_documents")
+}
+
+// ============================================================================
+// DATA VAULT - 3-Tier Security System
+// ============================================================================
+
+model DataVault {
+  id                      String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  oa_id                   String      @unique @db.Uuid
+  
+  // Tier 1: PUBLIC - Available in OA profile
+  // (No separate storage needed - uses OA profile fields)
+  
+  // Tier 2: PROTECTED
+  detailed_profile_path   String?     // Extended company info
+  pricing_overview_path   String?     // Pricing/service catalog
+  client_list             String[]    @default([])
+  
+  // Tier 3: CONFIDENTIAL  
+  nda_required            Boolean     @default(true)
+  nda_template_path       String?
+  
+  // System
+  created_at              DateTime    @default(now())
+  updated_at              DateTime    @updatedAt
+  
+  // Relations
+  oa                      BusinessOA  @relation(fields: [oa_id], references: [id], onDelete: Cascade)
+  access_requests         DataAccessRequest[]
+  confidential_documents  ConfidentialDocument[]
+  
+  @@map("data_vaults")
+}
+
+model ConfidentialDocument {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vault_id        String      @db.Uuid
+  
+  title           String
+  document_type   String      // financial, cap_table, strategic, proprietary
+  storage_path    String
+  file_size       Int?
+  mime_type       String?
+  
+  // Access tracking
+  view_count      Int         @default(0)
+  
+  created_at      DateTime    @default(now())
+  
+  vault           DataVault   @relation(fields: [vault_id], references: [id], onDelete: Cascade)
+  
+  @@index([vault_id])
+  @@map("confidential_documents")
+}
+
+model DataAccessRequest {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vault_id          String            @db.Uuid
+  requester_oa_id   String            @db.Uuid
+  
+  // What they're requesting
+  tier              DataTier
+  purpose           String            @db.Text
+  
+  // Status
+  status            DataAccessStatus  @default(PENDING)
+  
+  // NDA (for Tier 3)
+  nda_signed        Boolean           @default(false)
+  nda_signed_at     DateTime?
+  nda_document_path String?
+  
+  // Approval
+  approved_by       String?           @db.Uuid
+  approved_at       DateTime?
+  rejection_reason  String?
+  
+  // Validity
+  valid_from        DateTime?
+  valid_until       DateTime?
+  
+  // System
+  created_at        DateTime          @default(now())
+  updated_at        DateTime          @updatedAt
+  
+  // Relations
+  vault             DataVault         @relation(fields: [vault_id], references: [id], onDelete: Cascade)
+  access_logs       DataAccessLog[]
+  
+  @@index([vault_id])
+  @@index([requester_oa_id])
+  @@index([status])
+  @@map("data_access_requests")
+}
+
+model DataAccessLog {
+  id                String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  request_id        String      @db.Uuid
+  accessor_user_id  String      @db.Uuid
+  
+  document_id       String?     @db.Uuid
+  document_type     String?
+  
+  action            String      // view, download, share
+  ip_address        String?
+  user_agent        String?
+  
+  accessed_at       DateTime    @default(now())
+  
+  request           DataAccessRequest @relation(fields: [request_id], references: [id], onDelete: Cascade)
+  
+  @@index([request_id])
+  @@index([accessed_at])
+  @@map("data_access_logs")
+}
+
+// ============================================================================
+// EVENTS & BOOKINGS
+// ============================================================================
+
+model Event {
+  id                    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizer_oa_id       String          @db.Uuid
+  
+  // Basic Info
+  title                 String
+  slug                  String          @unique
+  description           String?         @db.Text
+  cover_image_url       String?
+  
+  // Type & Format
+  event_type            EventType
+  format                EventFormat
+  
+  // Schedule
+  start_time            DateTime
+  end_time              DateTime
+  timezone              String          @default("Asia/Ho_Chi_Minh")
+  
+  // Location
+  venue_name            String?
+  venue_address         String?
+  meeting_url           String?
+  
+  // Capacity
+  max_attendees         Int?
+  registration_deadline DateTime?
+  requires_approval     Boolean         @default(false)
+  
+  // Targeting
+  target_oa_types       OAType[]        @default([])
+  target_industries     String[]        @default([])
+  
+  // Status
+  is_published          Boolean         @default(false)
+  is_cancelled          Boolean         @default(false)
+  
+  // System
+  created_at            DateTime        @default(now())
+  updated_at            DateTime        @updatedAt
+  
+  // Relations
+  organizer             BusinessOA      @relation("EventOrganizer", fields: [organizer_oa_id], references: [id], onDelete: Cascade)
+  registrations         EventRegistration[]
+  
+  @@index([organizer_oa_id])
+  @@index([start_time])
+  @@index([is_published])
+  @@map("events")
+}
+
+model EventRegistration {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_id        String      @db.Uuid
+  attendee_oa_id  String      @db.Uuid
+  registered_by   String      @db.Uuid
+  
+  status          String      @default("pending")  // pending, approved, rejected, attended, no_show
+  
+  notes           String?
+  approved_at     DateTime?
+  attended_at     DateTime?
+  
+  created_at      DateTime    @default(now())
+  
+  event           Event       @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  attendee_oa     BusinessOA  @relation(fields: [attendee_oa_id], references: [id], onDelete: Cascade)
+  
+  @@unique([event_id, attendee_oa_id])
+  @@index([event_id])
+  @@map("event_registrations")
+}
+
+model Booking {
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requester_oa_id     String          @db.Uuid
+  target_oa_id        String          @db.Uuid
+  created_by_user_id  String          @db.Uuid
+  
+  // Purpose
+  purpose             String          // Explore, FollowUp, Demo, NDADiscussion
+  message             String?         @db.Text
+  
+  // Reference (what triggered this)
+  reference_type      String?         // Project, Event, Match
+  reference_id        String?         @db.Uuid
+  
+  // Scheduling
+  proposed_times      Json            // Array of { start, end } objects
+  confirmed_time      DateTime?
+  duration_minutes    Int             @default(30)
+  format              String          @default("online")
+  
+  // Meeting Details
+  meeting_link        String?
+  venue               String?
+  
+  // Status
+  status              BookingStatus   @default(PENDING)
+  
+  // Completion
+  completed_at        DateTime?
+  
+  // System
+  created_at          DateTime        @default(now())
+  updated_at          DateTime        @updatedAt
+  
+  // Relations
+  requester_oa        BusinessOA      @relation("BookingRequester", fields: [requester_oa_id], references: [id], onDelete: Cascade)
+  target_oa           BusinessOA      @relation("BookingTarget", fields: [target_oa_id], references: [id], onDelete: Cascade)
+  created_by          User            @relation("BookingCreator", fields: [created_by_user_id], references: [id])
+  feedback            BookingFeedback[]
+  
+  @@index([requester_oa_id])
+  @@index([target_oa_id])
+  @@index([status])
+  @@map("bookings")
+}
+
+model BookingFeedback {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  booking_id      String      @db.Uuid
+  from_oa_id      String      @db.Uuid
+  
+  rating          Int         // 1-5
+  was_valuable    Boolean
+  would_meet_again Boolean
+  notes           String?     @db.Text
+  
+  created_at      DateTime    @default(now())
+  
+  booking         Booking     @relation(fields: [booking_id], references: [id], onDelete: Cascade)
+  
+  @@unique([booking_id, from_oa_id])
+  @@map("booking_feedback")
+}
+
+// ============================================================================
+// TRUST & REPUTATION SYSTEM
+// ============================================================================
+
+model TrustScore {
+  id                    String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  oa_id                 String      @db.Uuid
+  
+  // Component Scores (0-25 each, total 0-100)
+  identity_score        Int         @default(0)   // Email, OA verified, Tax code, 2FA
+  transparency_score    Int         @default(0)   // Profile completeness, Active projects
+  execution_score       Int         @default(0)   // Bookings completed, Events attended
+  community_score       Int         @default(0)   // Vouches, Collaborations
+  
+  // Calculated Total
+  total_score           Int         @default(0)
+  level                 TrustLevel  @default(NEWCOMER)
+  
+  calculated_at         DateTime    @default(now())
+  
+  @@unique([oa_id])
+  @@map("trust_scores")
+}
+
+model TrustScoreHistory {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  oa_id           String      @db.Uuid
+  
+  total_score     Int
+  level           TrustLevel
+  
+  change_reason   String?
+  
+  recorded_at     DateTime    @default(now())
+  
+  @@index([oa_id, recorded_at])
+  @@map("trust_score_history")
+}
+
+model TrustBadge {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  
+  name            String      @unique
+  description     String
+  category        String      // identity, transparency, execution, community, special
+  tier            String      // bronze, silver, gold, platinum
+  icon            String
+  
+  // Award Requirements (JSON)
+  requirements    Json
+  
+  created_at      DateTime    @default(now())
+  
+  // Relations
+  oas             OABadge[]
+  
+  @@map("trust_badges")
+}
+
+model OABadge {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  oa_id           String      @db.Uuid
+  badge_id        String      @db.Uuid
+  
+  awarded_at      DateTime    @default(now())
+  awarded_reason  String?
+  
+  oa              BusinessOA  @relation(fields: [oa_id], references: [id], onDelete: Cascade)
+  badge           TrustBadge  @relation(fields: [badge_id], references: [id], onDelete: Cascade)
+  
+  @@unique([oa_id, badge_id])
+  @@map("oa_badges")
+}
+
+model Vouch {
+  id                    String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  voucher_oa_id         String      @db.Uuid
+  vouchee_oa_id         String      @db.Uuid
+  
+  // Relationship
+  relationship          String      // Client, Partner, Investor, Colleague
+  relationship_duration String?
+  
+  // Vouch Details
+  vouch_type            String      // Capability, Character, Both
+  capabilities_vouched  String[]    @default([])
+  testimonial           String?     @db.Text
+  
+  // Verification
+  is_mutual             Boolean     @default(false)
+  verified_via          String?     // ProjectCollaboration, EventMeeting, External
+  
+  // Validity
+  is_active             Boolean     @default(true)
+  expires_at            DateTime
+  
+  created_at            DateTime    @default(now())
+  
+  voucher               BusinessOA  @relation("VouchGiver", fields: [voucher_oa_id], references: [id], onDelete: Cascade)
+  vouchee               BusinessOA  @relation("VouchReceiver", fields: [vouchee_oa_id], references: [id], onDelete: Cascade)
+  
+  @@unique([voucher_oa_id, vouchee_oa_id])
+  @@index([vouchee_oa_id])
+  @@map("vouches")
+}
+
+model BusinessSpotlight {
+  id                String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  oa_id             String      @db.Uuid
+  
+  type              String      // WeeklyFeature, SuccessStory, ThoughtLeader
+  
+  title             String
+  story             String      @db.Text
+  media_urls        String[]    @default([])
+  
+  // Display
+  featured_locations String[]   @default([]) // Homepage, Feed, Newsletter
+  feature_start     DateTime
+  feature_end       DateTime
+  
+  // Engagement
+  view_count        Int         @default(0)
+  reaction_count    Int         @default(0)
+  share_count       Int         @default(0)
+  
+  // Selection
+  selected_by       String      @db.Uuid
+  selection_reason  String?
+  
+  created_at        DateTime    @default(now())
+  
+  oa                BusinessOA  @relation(fields: [oa_id], references: [id], onDelete: Cascade)
+  
+  @@index([feature_start, feature_end])
+  @@map("business_spotlights")
+}
+
+// ============================================================================
+// MATCHING & AI SUGGESTIONS
+// ============================================================================
+
+model MatchSuggestion {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  source_oa_id      String        @db.Uuid
+  target_oa_id      String        @db.Uuid
+  
+  // Match Quality (0-100)
+  match_score       Int
+  match_type        String        // Customer, Investor, Partner, Supplier
+  
+  // Why this match? (JSON array)
+  match_reasons     Json          // [{ type: "industry", description: "...", weight: 0.3 }]
+  
+  // Status
+  status            MatchStatus   @default(NEW)
+  
+  // Expiry
+  expires_at        DateTime
+  
+  // System
+  created_at        DateTime      @default(now())
+  updated_at        DateTime      @updatedAt
+  
+  source_oa         BusinessOA    @relation("MatchSource", fields: [source_oa_id], references: [id], onDelete: Cascade)
+  target_oa         BusinessOA    @relation("MatchTarget", fields: [target_oa_id], references: [id], onDelete: Cascade)
+  
+  @@unique([source_oa_id, target_oa_id])
+  @@index([source_oa_id, status])
+  @@index([match_score])
+  @@map("match_suggestions")
+}
+
+model Interaction {
+  id                String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actor_oa_id       String      @db.Uuid
+  
+  target_type       String      // Project, OAProfile, Event
+  target_id         String      @db.Uuid
+  
+  action            String      // View, Save, Share, Inquire, Book
+  
+  source            String      // Feed, Search, Suggestion, Event
+  session_id        String?
+  
+  created_at        DateTime    @default(now())
+  
+  actor_oa          BusinessOA  @relation("InteractionActor", fields: [actor_oa_id], references: [id], onDelete: Cascade)
+  
+  @@index([actor_oa_id])
+  @@index([target_type, target_id])
+  @@index([created_at])
+  @@map("interactions")
+}
+
+// ============================================================================
+// NOTIFICATIONS & AUDIT
+// ============================================================================
+
+model Notification {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id         String      @db.Uuid
+  
+  type            String      // booking_request, data_access, event_reminder, match_suggestion
+  title           String
+  message         String
+  
+  // Reference
+  reference_type  String?
+  reference_id    String?     @db.Uuid
+  
+  // Status
+  is_read         Boolean     @default(false)
+  read_at         DateTime?
+  
+  created_at      DateTime    @default(now())
+  
+  user            User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  @@index([user_id, is_read])
+  @@index([created_at])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  
+  actor_user_id   String?     @db.Uuid
+  actor_oa_id     String?     @db.Uuid
+  
+  action          String      // create, update, delete, login, etc.
+  entity_type     String      // User, OA, Project, Event, etc.
+  entity_id       String?     @db.Uuid
+  
+  payload_before  Json?
+  payload_after   Json?
+  
+  ip_address      String?
+  user_agent      String?
+  
+  created_at      DateTime    @default(now())
+  
+  actor           User?       @relation("AuditActor", fields: [actor_user_id], references: [id])
+  
+  @@index([entity_type, entity_id])
+  @@index([actor_user_id])
+  @@index([created_at])
+  @@map("audit_logs")
+}

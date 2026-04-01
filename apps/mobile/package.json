@@ -1,0 +1,21 @@
+{
+  "name": "mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/App.tsx",
+  "scripts": {
+    "start": "echo \"React Native runtime not configured yet\"",
+    "lint": "echo \"no lint configured for mobile yet\"",
+    "test": "echo \"no tests configured for mobile yet\""
+  },
+  "dependencies": {
+    "@iec-hub/shared": "workspace:*",
+    "react": "^18.3.0",
+    "react-native": "0.76.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/react-native": "0.73.0",
+    "typescript": "^5.6.0"
+  }
+}

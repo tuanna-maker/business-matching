@@ -1,0 +1,920 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AuditLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id         String?  @db.Uuid
+  actor_id       String?  @db.Uuid
+  actor_type     String?
+  action         String
+  entity_type    String
+  entity_id      String?  @db.Uuid
+  payload_before Json?
+  payload_after  Json?
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  user           User?    @relation(fields: [actor_id], references: [id])
+  org            Org?     @relation(fields: [org_id], references: [id])
+
+  @@index([actor_id], map: "idx_AuditLog_actor_id")
+  @@index([entity_type, entity_id], map: "idx_AuditLog_entity")
+  @@index([org_id], map: "idx_AuditLog_org_id")
+}
+
+model BookingRequest {
+  id                                               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requester_id                                     String        @db.Uuid
+  receiver_id                                      String        @db.Uuid
+  proposed_time                                    DateTime      @db.Timestamptz(6)
+  duration_minutes                                 Int           @default(30)
+  timezone                                         String        @default("Asia/Ho_Chi_Minh")
+  title                                            String
+  description                                      String?
+  meeting_type                                     String        @default("online")
+  meeting_link                                     String?
+  location                                         String?
+  status                                           BookingStatus @default(PENDING)
+  slot_locked                                      Boolean       @default(false)
+  reminder_24h_sent                                Boolean       @default(false)
+  reminder_1h_sent                                 Boolean       @default(false)
+  confirmed_at                                     DateTime?     @db.Timestamptz(6)
+  cancelled_at                                     DateTime?     @db.Timestamptz(6)
+  cancel_reason                                    String?
+  created_at                                       DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at                                       DateTime      @default(now()) @db.Timestamptz(6)
+  PilotUser_BookingRequest_receiver_idToPilotUser  PilotUser     @relation("BookingRequest_receiver_idToPilotUser", fields: [receiver_id], references: [id])
+  PilotUser_BookingRequest_requester_idToPilotUser PilotUser     @relation("BookingRequest_requester_idToPilotUser", fields: [requester_id], references: [id])
+
+  @@index([proposed_time])
+  @@index([receiver_id, status])
+  @@index([requester_id, status])
+}
+
+model CalendarSlot {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id         String    @db.Uuid
+  start_time      DateTime  @db.Timestamptz(6)
+  end_time        DateTime  @db.Timestamptz(6)
+  timezone        String    @default("Asia/Ho_Chi_Minh")
+  is_available    Boolean   @default(true)
+  is_recurring    Boolean   @default(false)
+  recurrence_rule String?
+  booking_id      String?   @db.Uuid
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @default(now()) @db.Timestamptz(6)
+  pilot_user       PilotUser @relation(fields: [user_id], references: [id])
+
+  @@index([user_id, is_available])
+  @@index([user_id, start_time])
+}
+
+model Conversation {
+  id                                            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id                                        String?   @db.Uuid
+  match_id                                      String    @unique @db.Uuid
+  participant1_id                               String    @db.Uuid
+  participant2_id                               String    @db.Uuid
+  last_message_id                               String?   @db.Uuid
+  created_at                                    DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at                                    DateTime  @default(now()) @db.Timestamptz(6)
+  Message_Conversation_last_message_idToMessage Message?  @relation("Conversation_last_message_idToMessage", fields: [last_message_id], references: [id])
+  match                                         Match     @relation(fields: [match_id], references: [id])
+  org                                           Org?      @relation(fields: [org_id], references: [id])
+  Message_Message_conversation_idToConversation Message[] @relation("Message_conversation_idToConversation")
+
+  @@index([org_id], map: "idx_Conversation_org_id")
+  @@index([participant1_id], map: "idx_Conversation_participant1")
+  @@index([participant2_id], map: "idx_Conversation_participant2")
+}
+
+model DataRoomDocument {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id       String?  @db.Uuid
+  data_room_id String   @db.Uuid
+  title        String
+  type         String
+  storage_path String
+  file_size    Int?
+  mime_type    String?
+  tier         String   @default("public") // public | protected | confidential
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime @default(now()) @db.Timestamptz(6)
+  created_by   String?  @db.Uuid
+  data_room     DataRoom @relation(fields: [data_room_id], references: [id])
+  org          Org?     @relation(fields: [org_id], references: [id])
+
+  @@index([data_room_id], map: "idx_DataRoomDocument_data_room_id")
+  @@index([org_id], map: "idx_DataRoomDocument_org_id")
+  @@index([tier], map: "idx_DataRoomDocument_tier")
+}
+
+model DataRoomRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id         String?   @db.Uuid
+  data_room_id   String    @db.Uuid
+  requester_id   String    @db.Uuid
+  requested_tier String    @default("protected") // protected | confidential
+  status         String    @default("pending")
+  purpose        String?   // Reason for requesting access
+  requested_at   DateTime  @default(now()) @db.Timestamptz(6)
+  responded_at   DateTime?
+  response_note  String?
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime  @default(now()) @db.Timestamptz(6)
+  created_by     String?   @db.Uuid
+  data_room      DataRoom  @relation(fields: [data_room_id], references: [id])
+  org            Org?      @relation(fields: [org_id], references: [id])
+  user           User      @relation(fields: [requester_id], references: [id])
+
+  @@index([data_room_id], map: "idx_DataRoomRequest_data_room_id")
+  @@index([org_id], map: "idx_DataRoomRequest_org_id")
+  @@index([requester_id], map: "idx_DataRoomRequest_requester_id")
+}
+
+// Tracks approved data access with TTL per SRS Epic 3
+model DataAccessGrant {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id       String?   @db.Uuid
+  data_room_id String    @db.Uuid
+  user_id      String    @db.Uuid
+  tier         String    // protected | confidential
+  granted_at   DateTime  @default(now()) @db.Timestamptz(6)
+  expires_at   DateTime  @db.Timestamptz(6)
+  revoked_at   DateTime? @db.Timestamptz(6)
+  nda_signed   Boolean   @default(false)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime  @default(now()) @db.Timestamptz(6)
+  data_room    DataRoom  @relation(fields: [data_room_id], references: [id])
+  user         User      @relation(fields: [user_id], references: [id])
+
+  @@unique([data_room_id, user_id, tier])
+  @@index([data_room_id], map: "idx_DataAccessGrant_data_room_id")
+  @@index([user_id], map: "idx_DataAccessGrant_user_id")
+  @@index([expires_at], map: "idx_DataAccessGrant_expires_at")
+}
+
+model DataRoom {
+  id                  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id              String?            @db.Uuid
+  project_id          String             @db.Uuid
+  title               String
+  description         String?
+  status              String             @default("active")
+  created_at          DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime           @default(now()) @db.Timestamptz(6)
+  created_by          String?            @db.Uuid
+  data_room_documents DataRoomDocument[]
+  data_room_requests  DataRoomRequest[]
+  data_access_grants  DataAccessGrant[]
+  org                 Org?               @relation(fields: [org_id], references: [id])
+  project             Project            @relation(fields: [project_id], references: [id])
+
+  @@index([org_id], map: "idx_DataRoom_org_id")
+  @@index([project_id], map: "idx_DataRoom_project_id")
+}
+
+model EmailDomainBlacklist {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domain     String   @unique
+  reason     String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+}
+
+model EmailVerificationToken {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String    @db.Uuid
+  token      String    @unique
+  expires_at DateTime  @db.Timestamptz(6)
+  used_at    DateTime? @db.Timestamptz(6)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([token])
+  @@index([user_id])
+}
+
+model EventRegistration {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_id          String             @db.Uuid
+  user_id           String             @db.Uuid
+  status            RegistrationStatus @default(REGISTERED)
+  notes             String?
+  reject_reason     String?
+  added_to_calendar Boolean            @default(false)
+  reminder_sent     Boolean            @default(false)
+  created_at        DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime           @default(now()) @db.Timestamptz(6)
+  event             Event              @relation(fields: [event_id], references: [id])
+  pilot_user         PilotUser          @relation(fields: [user_id], references: [id])
+
+  @@unique([event_id, user_id])
+  @@index([event_id, status])
+  @@index([user_id])
+}
+
+model Event {
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  creator_id          String               @db.Uuid
+  oa_id               String?              @db.Uuid
+  title               String
+  slug                String               @unique
+  description         String?
+  short_description   String?
+  event_type          EventType            @default(ONLINE)
+  meeting_link        String?
+  location            String?
+  address             String?
+  start_time          DateTime             @db.Timestamptz(6)
+  end_time            DateTime             @db.Timestamptz(6)
+  timezone            String               @default("Asia/Ho_Chi_Minh")
+  max_attendees       Int?
+  current_attendees   Int                  @default(0)
+  cover_image_url     String?
+  status              EventStatus          @default(DRAFT)
+  is_public           Boolean              @default(true)
+  requires_approval   Boolean              @default(false)
+  view_count          Int                  @default(0)
+  created_at          DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime             @default(now()) @db.Timestamptz(6)
+  event_registrations   EventRegistration[]
+  pilot_user           PilotUser            @relation(fields: [creator_id], references: [id])
+  organization_account OrganizationAccount? @relation(fields: [oa_id], references: [id])
+
+  @@index([creator_id])
+  @@index([oa_id])
+  @@index([slug])
+  @@index([status, start_time])
+}
+
+model IecCriterion {
+  id              Int               @id @default(autoincrement())
+  org_id          String?           @db.Uuid
+  iec_level_id    Int
+  title           String
+  description     String?
+  weight          Decimal?          @db.Decimal
+  is_required     Boolean           @default(true)
+  created_at      DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime          @default(now()) @db.Timestamptz(6)
+  created_by      String?           @db.Uuid
+  iec_level        IecLevel          @relation(fields: [iec_level_id], references: [id])
+  org             Org?              @relation(fields: [org_id], references: [id])
+  project_iec_scores ProjectIecScore[]
+
+  @@index([iec_level_id], map: "idx_IecCriterion_level_id")
+}
+
+model IecLevel {
+  id                                                                  Int                    @id @default(autoincrement())
+  org_id                                                              String?                @db.Uuid
+  level                                                               String
+  name                                                                String
+  description                                                         String?
+  created_at                                                          DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at                                                          DateTime               @default(now()) @db.Timestamptz(6)
+  created_by                                                          String?                @db.Uuid
+  iec_criterion                                                        IecCriterion[]
+  org                                                                 Org?                   @relation(fields: [org_id], references: [id])
+  ProjectIecAssessment_ProjectIecAssessment_final_level_idToIecLevel  ProjectIecAssessment[] @relation("ProjectIecAssessment_final_level_idToIecLevel")
+  ProjectIecAssessment_ProjectIecAssessment_target_level_idToIecLevel ProjectIecAssessment[] @relation("ProjectIecAssessment_target_level_idToIecLevel")
+
+  @@index([org_id], map: "idx_IecLevel_org_id")
+}
+
+model InvestorProfile {
+  id                    String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id                String?       @db.Uuid
+  user_id               String        @unique @db.Uuid
+  company_name          String
+  company_description   String?
+  website               String?
+  founded_year          Int?
+  team_size             Int?
+  location              String?
+  investment_focus      String?
+  investment_stage      String?
+  investment_amount_min Decimal?
+  investment_amount_max Decimal?
+  investment_currency   String?
+  avatar_url            String?
+  created_at            DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime      @default(now()) @db.Timestamptz(6)
+  created_by            String?       @db.Uuid
+  org                   Org?          @relation(fields: [org_id], references: [id])
+  user                  User          @relation(fields: [user_id], references: [id])
+  match_intent           MatchIntent[]
+  match                 Match[]
+
+  @@index([org_id], map: "idx_InvestorProfile_org_id")
+  @@index([user_id], map: "idx_InvestorProfile_user_id")
+}
+
+model MatchEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id     String?  @db.Uuid
+  match_id   String   @db.Uuid
+  event_type String
+  old_status String?
+  new_status String?
+  actor_id   String   @db.Uuid
+  note       String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  created_by String?  @db.Uuid
+  user       User     @relation(fields: [actor_id], references: [id])
+  match      Match    @relation(fields: [match_id], references: [id])
+  org        Org?     @relation(fields: [org_id], references: [id])
+
+  @@index([match_id], map: "idx_MatchEvent_match_id")
+}
+
+model MatchIntent {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id          String?         @db.Uuid
+  investor_id     String          @db.Uuid
+  project_id      String          @db.Uuid
+  status          String          @default("liked")
+  source          String?
+  created_at      DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime        @default(now()) @db.Timestamptz(6)
+  created_by      String?         @db.Uuid
+  investor_profile InvestorProfile @relation(fields: [investor_id], references: [id])
+  org             Org?            @relation(fields: [org_id], references: [id])
+  project         Project         @relation(fields: [project_id], references: [id])
+  match           Match[]
+
+  @@unique([investor_id, project_id])
+  @@index([investor_id], map: "idx_MatchIntent_investor_id")
+  @@index([org_id], map: "idx_MatchIntent_org_id")
+  @@index([project_id], map: "idx_MatchIntent_project_id")
+}
+
+model Match {
+  id                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id             String?         @db.Uuid
+  project_id         String          @db.Uuid
+  startup_id         String          @db.Uuid
+  investor_id        String          @db.Uuid
+  match_intent_id    String?         @db.Uuid
+  iec_level_at_match String?
+  status             String          @default("pending_intro")
+  created_at         DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime        @default(now()) @db.Timestamptz(6)
+  created_by         String?         @db.Uuid
+  conversation       Conversation?
+  match_events         MatchEvent[]
+  investor_profile    InvestorProfile @relation(fields: [investor_id], references: [id])
+  match_intent        MatchIntent?    @relation(fields: [match_intent_id], references: [id])
+  org                Org?            @relation(fields: [org_id], references: [id])
+  project            Project         @relation(fields: [project_id], references: [id])
+  startup_profile     StartupProfile  @relation(fields: [startup_id], references: [id])
+
+  @@index([investor_id], map: "idx_matches_investor_id")
+  @@index([org_id], map: "idx_matches_org_id")
+  @@index([startup_id], map: "idx_matches_startup_id")
+}
+
+model Message {
+  id                                                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id                                             String?        @db.Uuid
+  conversation_id                                    String         @db.Uuid
+  sender_id                                          String         @db.Uuid
+  content                                            String?
+  type                                               MessageType    @default(TEXT)
+  file_url                                           String?
+  file_name                                          String?
+  file_size                                          Int?
+  read_at                                            DateTime?      @db.Timestamptz(6)
+  created_at                                         DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at                                         DateTime       @default(now()) @db.Timestamptz(6)
+  Conversation_Conversation_last_message_idToMessage Conversation[] @relation("Conversation_last_message_idToMessage")
+  Conversation_Message_conversation_idToConversation Conversation   @relation("Message_conversation_idToConversation", fields: [conversation_id], references: [id], onDelete: Cascade)
+  org                                                Org?           @relation(fields: [org_id], references: [id])
+  user                                               User           @relation(fields: [sender_id], references: [id])
+
+  @@index([conversation_id], map: "idx_Message_conversation_id")
+  @@index([created_at], map: "idx_Message_created_at")
+  @@index([org_id], map: "idx_Message_org_id")
+  @@index([sender_id], map: "idx_Message_sender_id")
+}
+
+model Notification {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id            String?   @db.Uuid
+  recipient_user_id String    @db.Uuid
+  type              String
+  payload           Json?
+  read_at           DateTime? @db.Timestamptz(6)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  org               Org?      @relation(fields: [org_id], references: [id])
+  user              User      @relation(fields: [recipient_user_id], references: [id])
+
+  @@index([org_id], map: "idx_Notification_org_id")
+  @@index([recipient_user_id], map: "idx_Notification_recipient")
+  @@index([type], map: "idx_Notification_type")
+}
+
+model OrgInvite {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id        String?  @db.Uuid
+  inviter_id    String   @db.Uuid
+  invitee_email String
+  role_code     String
+  status        String   @default("pending")
+  token         String   @unique
+  expires_at    DateTime
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime @default(now()) @db.Timestamptz(6)
+  created_by    String?  @db.Uuid
+  user          User     @relation(fields: [inviter_id], references: [id])
+  org           Org?     @relation(fields: [org_id], references: [id])
+
+  @@index([invitee_email], map: "idx_OrgInvite_invitee_email")
+  @@index([org_id], map: "idx_OrgInvite_org_id")
+  @@index([token], map: "idx_OrgInvite_token")
+}
+
+model OrganizationAccount {
+  id                   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                 String
+  oa_type              OAType
+  logo_url             String?
+  description          String?
+  website              String?
+  company_email_domain String
+  verified             Boolean     @default(true)
+  verified_at          DateTime?   @db.Timestamptz(6)
+  industry             String?
+  location             String?
+  stage                String?
+  funding_need         String?
+  team_size            String?
+  investment_focus     String?
+  ticket_size_min      String?
+  ticket_size_max      String?
+  portfolio_count      String?
+  company_size         String?
+  innovation_needs     String?
+  partnership_interest String?
+  created_at           DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime    @default(now()) @db.Timestamptz(6)
+  created_by           String      @db.Uuid
+  event                Event[]
+  pilot_user            PilotUser[]
+
+  @@index([company_email_domain])
+  @@index([oa_type])
+}
+
+model Org {
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                 String
+  org_type             String?
+  logo_url             String?
+  tax_id               String?
+  website              String?
+  created_at           DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime               @default(now()) @db.Timestamptz(6)
+  created_by           String?                @db.Uuid
+  address              String?
+  business_sector      String?
+  description          String?
+  email                String?
+  employee_count       String?
+  founding_year        Int?
+  legal_representative String?
+  phone                String?
+  verification_status  String                 @default("pending")
+  verified_at          DateTime?              @db.Timestamptz(6)
+  verified_by          String?                @db.Uuid
+  AuditLog             AuditLog[]
+  conversation         Conversation[]
+  data_room_documents     DataRoomDocument[]
+  data_room_requests      DataRoomRequest[]
+  data_room             DataRoom[]
+  iec_criterion         IecCriterion[]
+  iec_level             IecLevel[]
+  investor_profile      InvestorProfile[]
+  match_events           MatchEvent[]
+  match_intent          MatchIntent[]
+  match                Match[]
+  Message              Message[]
+  Notification         Notification[]
+  OrgInvite            OrgInvite[]
+  ProjectDocument      ProjectDocument[]
+  ProjectIecAssessment ProjectIecAssessment[]
+  project_iec_scores      ProjectIecScore[]
+  project              Project[]
+  startup_profile       StartupProfile[]
+  user                 User[]
+  TrustScore           TrustScore[]
+  Vouch_given          Vouch[]                @relation("VouchingOrg")
+  Vouch_received       Vouch[]                @relation("VouchedOrg")
+  webhooks             Webhook[]
+  followers            OrgFollow[]            @relation("OrgFollowers")
+  activity_feed        ActivityFeedItem[]
+
+  @@index([org_type], map: "idx_orgs_org_type")
+}
+
+model PilotUser {
+  id                                                    String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                                                 String               @unique
+  email_domain                                          String
+  password_hash                                         String
+  full_name                                             String
+  phone                                                 String?
+  avatar_url                                            String?
+  status                                                UserStatus           @default(GUEST)
+  email_verified                                        Boolean              @default(false)
+  email_verified_at                                     DateTime?            @db.Timestamptz(6)
+  oa_id                                                 String?              @db.Uuid
+  created_at                                            DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at                                            DateTime             @default(now()) @db.Timestamptz(6)
+  BookingRequest_BookingRequest_receiver_idToPilotUser  BookingRequest[]     @relation("BookingRequest_receiver_idToPilotUser")
+  BookingRequest_BookingRequest_requester_idToPilotUser BookingRequest[]     @relation("BookingRequest_requester_idToPilotUser")
+  CalendarSlot                                          CalendarSlot[]
+  event_registrations                                     EventRegistration[]
+  event                                                 Event[]
+  organization_account                                   OrganizationAccount? @relation(fields: [oa_id], references: [id])
+
+  @@index([email_domain])
+  @@index([email])
+  @@index([oa_id])
+  @@index([status])
+}
+
+model ProjectDocument {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id       String?  @db.Uuid
+  project_id   String   @db.Uuid
+  title        String
+  type         String
+  storage_path String
+  file_size    Int?
+  mime_type    String?
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime @default(now()) @db.Timestamptz(6)
+  created_by   String?  @db.Uuid
+  org          Org?     @relation(fields: [org_id], references: [id])
+  project      Project  @relation(fields: [project_id], references: [id])
+
+  @@index([org_id], map: "idx_ProjectDocument_org_id")
+  @@index([project_id], map: "idx_ProjectDocument_project_id")
+}
+
+model ProjectIecAssessment {
+  id                                                      String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id                                                  String?           @db.Uuid
+  project_id                                              String            @db.Uuid
+  assessor_id                                             String            @db.Uuid
+  target_level_id                                         Int
+  final_level_id                                          Int?
+  status                                                  String            @default("in_review")
+  comments                                                String?
+  created_at                                              DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at                                              DateTime          @default(now()) @db.Timestamptz(6)
+  created_by                                              String?           @db.Uuid
+  user                                                    User              @relation(fields: [assessor_id], references: [id])
+  IecLevel_ProjectIecAssessment_final_level_idToIecLevel  IecLevel?         @relation("ProjectIecAssessment_final_level_idToIecLevel", fields: [final_level_id], references: [id])
+  org                                                     Org?              @relation(fields: [org_id], references: [id])
+  project                                                 Project           @relation(fields: [project_id], references: [id])
+  IecLevel_ProjectIecAssessment_target_level_idToIecLevel IecLevel          @relation("ProjectIecAssessment_target_level_idToIecLevel", fields: [target_level_id], references: [id])
+  project_iec_scores                                         ProjectIecScore[]
+
+  @@index([org_id], map: "idx_ProjectIecAssessment_org_id")
+  @@index([project_id], map: "idx_ProjectIecAssessment_project_id")
+}
+
+model ProjectIecScore {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id               String?              @db.Uuid
+  assessment_id        String               @db.Uuid
+  criterion_id         Int
+  score                Decimal              @db.Decimal
+  comment              String?
+  created_at           DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime             @default(now()) @db.Timestamptz(6)
+  created_by           String?              @db.Uuid
+  ProjectIecAssessment ProjectIecAssessment @relation(fields: [assessment_id], references: [id])
+  iec_criterion         IecCriterion         @relation(fields: [criterion_id], references: [id])
+  org                  Org?                 @relation(fields: [org_id], references: [id])
+
+  @@index([assessment_id], map: "idx_ProjectIecScore_assessment_id")
+}
+
+model Project {
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id               String?                @db.Uuid
+  startup_id           String                 @db.Uuid
+  title                String
+  summary              String?
+  description          String?
+  industry             String?
+  stage                String?
+  funding_need_amount  Decimal?
+  funding_currency     String?
+  status               String                 @default("draft")
+  iec_level            String?
+  hero_image_url       String?
+  logo_url             String?
+  /// Tailwind-oriented token for dashboard accents, e.g. aurora, ember, ocean
+  brand_palette        String?
+  /// Demo / display growth trend, e.g. 18 means +18% MoM-style signal
+  growth_rate_pct      Int?
+  view_count           Int                    @default(0)
+  interest_count       Int                    @default(0)
+  last_activity_at     DateTime               @default(now()) @db.Timestamptz(6)
+  created_at           DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime               @default(now()) @db.Timestamptz(6)
+  created_by           String?                @db.Uuid
+  data_room             DataRoom[]
+  match_intent          MatchIntent[]
+  match                Match[]
+  ProjectDocument      ProjectDocument[]
+  ProjectIecAssessment ProjectIecAssessment[]
+  org                  Org?                   @relation(fields: [org_id], references: [id])
+  startup_profile       StartupProfile         @relation(fields: [startup_id], references: [id])
+
+  @@index([iec_level], map: "idx_projects_iec_level")
+  @@index([org_id], map: "idx_projects_org_id")
+  @@index([startup_id], map: "idx_projects_startup_id")
+  @@index([status], map: "idx_projects_status")
+}
+
+model Role {
+  id       Int        @id @default(autoincrement())
+  code     String     @unique
+  name     String
+  UserRole UserRole[]
+}
+
+model StartupProfile {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id              String?   @db.Uuid
+  user_id             String    @unique @db.Uuid
+  company_name        String
+  company_description String?
+  website             String?
+  founded_year        Int?
+  team_size           Int?
+  location            String?
+  industry            String?
+  funding_stage       String?
+  funding_amount      Decimal?
+  funding_currency    String?
+  pitch_deck_url      String?
+  avatar_url          String?
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime  @default(now()) @db.Timestamptz(6)
+  created_by          String?   @db.Uuid
+  match               Match[]
+  project             Project[]
+  org                 Org?      @relation(fields: [org_id], references: [id])
+  user                User      @relation(fields: [user_id], references: [id])
+
+  @@index([org_id], map: "idx_StartupProfile_org_id")
+  @@index([user_id], map: "idx_StartupProfile_user_id")
+}
+
+model UserRole {
+  user_id String @db.Uuid
+  role_id Int
+  Role    Role   @relation(fields: [role_id], references: [id])
+  user    User   @relation(fields: [user_id], references: [id])
+
+  @@id([user_id, role_id])
+}
+
+model User {
+  id                   String                 @id @db.Uuid
+  org_id               String?                @db.Uuid
+  full_name            String
+  email                String                 @unique
+  phone                String?
+  avatar_url           String?
+  user_type            String
+  approval_status      String                 @default("pending")
+  approved_at          DateTime?              @db.Timestamptz(6)
+  approved_by          String?                @db.Uuid
+  password_hash        String
+  created_at           DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime               @default(now()) @db.Timestamptz(6)
+  created_by           String?                @db.Uuid
+  AuditLog             AuditLog[]
+  data_room_requests   DataRoomRequest[]
+  data_access_grants   DataAccessGrant[]
+  investor_profile     InvestorProfile?
+  match_events         MatchEvent[]
+  Message              Message[]
+  Notification         Notification[]
+  OrgInvite            OrgInvite[]
+  ProjectIecAssessment ProjectIecAssessment[]
+  startup_profile      StartupProfile?
+  UserRole             UserRole[]
+  webhooks_created     Webhook[]
+  follows              OrgFollow[]        @relation("UserFollows")
+  shares               Share[]
+  activity_posts       ActivityFeedItem[]
+  org                  Org?                   @relation(fields: [org_id], references: [id])
+
+  @@index([approval_status], map: "idx_users_approval_status")
+  @@index([org_id], map: "idx_users_org_id")
+  @@index([user_type], map: "idx_users_user_type")
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+  RESCHEDULED
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum EventType {
+  ONLINE
+  OFFLINE
+  HYBRID
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+  SYSTEM
+}
+
+enum OAType {
+  STARTUP
+  INVESTOR
+  ENTERPRISE
+}
+
+enum RegistrationStatus {
+  REGISTERED
+  APPROVED
+  REJECTED
+  ATTENDED
+  NO_SHOW
+}
+
+enum UserStatus {
+  GUEST
+  REGISTERED
+  OA_VERIFIED
+}
+
+// ============================================
+// TRUST SCORING & VOUCH MODELS - Epic 2
+// ============================================
+
+model TrustScore {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id          String   @unique @db.Uuid
+  score           Float    @default(0) // Final trust score (0-100)
+  profile_score   Float    @default(0) // P: Profile completeness (0-100)
+  iec_score       Float    @default(0) // I: IEC level score (0-100)
+  vouch_score     Float    @default(0) // V: Vouching score (0-100)
+  audit_score     Float    @default(0) // A: Audit history score (0-100)
+  last_calculated DateTime @default(now()) @db.Timestamptz(6)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  org Org @relation(fields: [org_id], references: [id])
+
+  @@index([org_id], map: "idx_TrustScore_org_id")
+  @@index([score], map: "idx_TrustScore_score")
+  @@map("TrustScore")
+}
+
+model Vouch {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vouching_org_id String   @db.Uuid
+  vouched_org_id  String   @db.Uuid
+  vouch_type      String // "partnership", "transaction", "reference"
+  notes           String?
+  status          String   @default("active") // "active", "inactive", "revoked"
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  vouchingOrg Org @relation("VouchingOrg", fields: [vouching_org_id], references: [id])
+  vouchedOrg  Org @relation("VouchedOrg", fields: [vouched_org_id], references: [id])
+
+  @@unique([vouching_org_id, vouched_org_id])
+  @@index([vouched_org_id], map: "idx_Vouch_vouched_org_id")
+  @@index([vouching_org_id], map: "idx_Vouch_vouching_org_id")
+  @@index([status], map: "idx_Vouch_status")
+  @@map("Vouch")
+}
+
+// ============================================
+// Webhook Integration for External Systems
+// ============================================
+
+model Webhook {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id      String   @db.Uuid
+  name        String
+  url         String
+  secret      String? // For HMAC signature verification
+  events      String[] // Array of event types: ["dataroom_request", "iec_updated", "match_created", etc.]
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+  created_by  String?  @db.Uuid
+
+  org        Org               @relation(fields: [org_id], references: [id])
+  user       User?             @relation(fields: [created_by], references: [id])
+  deliveries WebhookDelivery[]
+
+  @@index([org_id], map: "idx_Webhook_org_id")
+  @@index([is_active], map: "idx_Webhook_is_active")
+  @@map("Webhook")
+}
+
+model WebhookDelivery {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  webhook_id      String   @db.Uuid
+  event_type      String
+  payload         Json
+  response_status Int?
+  response_body   String?
+  attempts        Int      @default(1)
+  status          String   @default("pending") // "pending", "success", "failed"
+  delivered_at    DateTime? @db.Timestamptz(6)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  webhook Webhook @relation(fields: [webhook_id], references: [id])
+
+  @@index([webhook_id], map: "idx_WebhookDelivery_webhook_id")
+  @@index([status], map: "idx_WebhookDelivery_status")
+  @@map("WebhookDelivery")
+}
+
+// ============================================
+// Social Layer - Follow/Share/Activity
+// ============================================
+
+model OrgFollow {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  follower_id  String   @db.Uuid  // User who is following
+  followed_id  String   @db.Uuid  // Org being followed
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  follower User @relation("UserFollows", fields: [follower_id], references: [id])
+  followed Org  @relation("OrgFollowers", fields: [followed_id], references: [id])
+
+  @@unique([follower_id, followed_id])
+  @@index([follower_id], map: "idx_OrgFollow_follower_id")
+  @@index([followed_id], map: "idx_OrgFollow_followed_id")
+  @@map("OrgFollow")
+}
+
+model Share {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String   @db.Uuid
+  entity_type String   // "project", "org", "service"
+  entity_id   String   @db.Uuid
+  platform    String   // "linkedin", "twitter", "facebook", "email", "copy_link"
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@index([user_id], map: "idx_Share_user_id")
+  @@index([entity_type, entity_id], map: "idx_Share_entity")
+  @@map("Share")
+}
+
+model ActivityFeedItem {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  org_id       String   @db.Uuid
+  actor_id     String?  @db.Uuid  // User who performed action (null for system events)
+  activity_type String  // "project_created", "iec_updated", "milestone_reached", "funding_received", "team_joined", etc.
+  entity_type  String?  // "project", "match", "team_member", etc.
+  entity_id    String?  @db.Uuid
+  title        String
+  description  String?
+  metadata     Json?    // Additional structured data
+  is_public    Boolean  @default(true)
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  org   Org   @relation(fields: [org_id], references: [id])
+  actor User? @relation(fields: [actor_id], references: [id])
+
+  @@index([org_id, is_public], map: "idx_ActivityFeedItem_org_public")
+  @@index([org_id, created_at], map: "idx_ActivityFeedItem_org_created")
+  @@index([activity_type], map: "idx_ActivityFeedItem_type")
+  @@map("ActivityFeedItem")
+}

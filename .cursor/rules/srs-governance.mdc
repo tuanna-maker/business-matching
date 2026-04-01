@@ -1,0 +1,12 @@
+---
+description: Enforce single canonical SRS workflow
+alwaysApply: true
+---
+
+# SRS Governance Rule
+
+- Canonical SRS file is `docs/SRS.md`.
+- Do not create a new SRS file (new name, duplicate, or versioned copy) unless the user explicitly confirms after being asked again.
+- If user requests creating another SRS file, ask a confirmation question first and wait for answer.
+- Prefer updating `docs/SRS.md` in place for all SRS changes.
+- Keep BRD and SRS terminology aligned (project ownership, tier access, RBAC, trust score).

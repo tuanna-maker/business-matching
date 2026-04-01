@@ -1,0 +1,62 @@
+[
+  {
+    "ts": "2026-03-03T09:44:06.424Z",
+    "type": "info",
+    "text": "VISIT /"
+  },
+  {
+    "ts": "2026-03-03T09:44:06.485Z",
+    "type": "console.debug",
+    "text": "[vite] connecting..."
+  },
+  {
+    "ts": "2026-03-03T09:44:06.493Z",
+    "type": "console.debug",
+    "text": "[vite] connected."
+  },
+  {
+    "ts": "2026-03-03T09:44:06.494Z",
+    "type": "pageerror",
+    "text": "SyntaxError: The requested module '/@fs/Users/uranus/Documents/vibe coding/business-matching/packages/shared/dist/index.js' does not provide an export named 'API_ROUTES'"
+  },
+  {
+    "ts": "2026-03-03T09:44:06.494Z",
+    "type": "info",
+    "text": "RESP / 200 http://localhost:5173/"
+  },
+  {
+    "ts": "2026-03-03T09:44:08.001Z",
+    "type": "metrics",
+    "text": "{\"path\":\"/\",\"title\":\"IEC Hub Web\",\"bodyTextLen\":0,\"bodyChildCount\":2,\"htmlLen\":531,\"hasRoot\":true,\"rootChildCount\":0,\"firstBodyText\":\"\"}"
+  },
+  {
+    "ts": "2026-03-03T09:44:08.038Z",
+    "type": "info",
+    "text": "VISIT /login"
+  },
+  {
+    "ts": "2026-03-03T09:44:08.050Z",
+    "type": "console.debug",
+    "text": "[vite] connecting..."
+  },
+  {
+    "ts": "2026-03-03T09:44:08.051Z",
+    "type": "console.debug",
+    "text": "[vite] connected."
+  },
+  {
+    "ts": "2026-03-03T09:44:08.052Z",
+    "type": "pageerror",
+    "text": "SyntaxError: The requested module '/@fs/Users/uranus/Documents/vibe coding/business-matching/packages/shared/dist/index.js' does not provide an export named 'API_ROUTES'"
+  },
+  {
+    "ts": "2026-03-03T09:44:08.052Z",
+    "type": "info",
+    "text": "RESP /login 200 http://localhost:5173/login"
+  },
+  {
+    "ts": "2026-03-03T09:44:09.555Z",
+    "type": "metrics",
+    "text": "{\"path\":\"/login\",\"title\":\"IEC Hub Web\",\"bodyTextLen\":0,\"bodyChildCount\":2,\"htmlLen\":531,\"hasRoot\":true,\"rootChildCount\":0,\"firstBodyText\":\"\"}"
+  }
+]

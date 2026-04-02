@@ -50,7 +50,7 @@ export default function RegisterPage() {
 
     setIsSubmitting(true);
     try {
-      await register({
+      await registerAccount({
         email: form.email,
         password: form.password,
         full_name: form.full_name,

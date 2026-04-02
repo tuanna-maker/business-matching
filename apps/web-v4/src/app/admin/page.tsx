@@ -308,7 +308,7 @@ export default function AdminDashboard() {
                   <p className="text-slate-400">Timestamp</p>
                   <p className="text-slate-900">{new Date(selectedLog.created_at).toLocaleString()}</p>
                 </div>
-                {(selectedLog.payload_after || selectedLog.payload_before) && (
+                {(selectedLog.payload_after ?? selectedLog.payload_before) != null && (
                   <div>
                     <p className="text-slate-400">Payload</p>
                     <pre className="text-slate-300 bg-slate-900/50 p-2 rounded text-xs overflow-auto max-h-32">
